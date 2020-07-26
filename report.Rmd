@@ -1,0 +1,67 @@
+---
+title: "Housing permits in Madison and Minneapolis"
+author: "Harald Kliems"
+date: "7/26/2020"
+output: html_document
+---
+
+# Import data
+
+Housing permit data is available from HUD: https://socds.huduser.gov/permits/index.html 
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(readr)
+
+permits <- read_csv("data/BuildingPermits.csv")
+```
+
+To get units permitted per population, let's population numbers from the Census.
+
+```{r}
+library(tidycensus)
+pop_WI <- get_estimates(geography = "place",
+              product = "population",
+              state = c("WI"),
+              county = c("Dane"),
+              time_series = TRUE)
+pop_MN <- get_estimates(geography = "place",
+              product = "population",
+              state = c("MN"),
+              county = c("Hennepin"),
+              time_series = TRUE)
+pop <- bind_rows(pop_WI, pop_MN)
+
+```
+The `time_series` option in `tidycensus returns multiple years, but in a strange format documented [here](https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars/2018.html). 
+
+```{r}
+pop <- pop %>% 
+  filter(str_detect(NAME, "Madison|Minneapolis")) %>% 
+  filter(DATE %in% 3:11 & variable == "POP") %>% 
+  mutate(year = DATE + 2008) %>% 
+  mutate(NAME = case_when(str_detect(NAME, "Madison") ~ "MADISON",
+                          TRUE ~ "MINNEAPOLIS"))
+
+permits <- permits %>% 
+  filter(Location == "MINNEAPOLIS" | Location == "MADISON") %>% 
+  filter(Year > 2010) %>% 
+  left_join(pop, by = c("Location" = "NAME", "Year" = "year"))
+
+```
+
+
+# Graphs
+Graph for raw number of units permitted:
+```{r}
+permits %>% 
+  filter(Series == "Total Units")  %>% 
+  mutate(permits_per_100k = Permits / (value / 100000)) %>% 
+  ggplot(aes(Year, Permits, color = Location)) +
+  geom_line() +
+  geom_line(aes(y = permits_per_100k)) +
+  scale_x_continuous(breaks = 2011:2019)
+```
+ 
+ 
